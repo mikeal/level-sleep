@@ -1,0 +1,40 @@
+{
+  "name": "level-sleep",
+  "version": "0.0.0",
+  "description": "Database for storing, cloneing and replicating SLEEP compatible data stores.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "dependencies": {
+    "bytewise": "~0.5.0",
+    "level-mutex": "~0.6.0",
+    "levelup": "~0.10.0",
+    "leveldown": "~0.6.2",
+    "sleep-ref": "~0.2.0"
+  },
+  "devDependencies": {
+    "okdone": "~0.3.0",
+    "cleanup": "~0.3.0",
+    "rimraf": "~2.2.0"
+  },
+  "scripts": {
+    "test": "node tests/run.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mikeal/level-sleep"
+  },
+  "keywords": [
+    "level",
+    "leveldb",
+    "sleep",
+    "replication",
+    "sync"
+  ],
+  "author": "Mikeal Rogers <mikeal.rogers@gmail.com>",
+  "license": "BSD",
+  "bugs": {
+    "url": "https://github.com/mikeal/level-sleep/issues"
+  }
+}
