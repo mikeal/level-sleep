@@ -4,6 +4,7 @@ var lsleep = require('../')
   , rimraf = require('rimraf')
   , ok = require('okdone')
   , assert = require('assert')
+  , bytewise = require('bytewise')
   ;
 
 var d = cleanup(function (error) {
@@ -16,11 +17,11 @@ var s = lsleep(__dirname+'/testdb')
 s.get('test-compact', function (e, db) {
 
   function assertSequences (num, cb) {
-    var entries = db.getSequences({})
+    var entries = db.mutex.lev.createReadStream({})
       , len = 0
       ;
 
-    entries.on('entry', function (entry) { len += 1 })
+    entries.on('data', function (entry) { len += 1 })
     entries.on('end', function () {
       assert.equal(len, num)
       ok('seqs '+num)
@@ -41,9 +42,9 @@ s.get('test-compact', function (e, db) {
       assert.equal(data, 3)
       ok('overwrite')
 
-      assertSequences(9, function () {
+      assertSequences(18, function () {
         db.compact(function () {
-          assertSequences(2, function () {
+          assertSequences(4, function () {
             d.cleanup()
           })
         })

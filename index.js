@@ -80,19 +80,16 @@ Database.prototype.compact = function (cb) {
       , seq = key[3]
       , deleted = key[4]
       ;
-
     if (id !== _id) {
       id = _id
     } else {
-      deletes.push([seq, deleted])
+      deletes.push(bytewise.encode([self.name, 0, seq, deleted]))
+      deletes.push(row.key)
     }
   })
   sequences.on('end', function () {
     deletes.forEach(function (entry) {
-      var seq = entry[0]
-        , deleted = entry[1]
-        ;
-      self.mutex.del(bytewise.encode([self.name, 0, seq, deleted]), noop)
+      self.mutex.del(entry, noop)
     })
     if (deletes.length === 0) return cb(null)
     else self.mutex.afterWrite(cb)
