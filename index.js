@@ -10,8 +10,6 @@ var mutex = require('level-mutex')
   , encode = bytewise.encode
   ;
 
-
-
 function Store (filename, opts) {
   opts = opts || {}
   opts.keyEncoding = 'binary'
@@ -27,11 +25,16 @@ Store.prototype.get = function (name, cb) {
     { start: bytewise.encode([name, 0, null])
     , end: bytewise.encode([name, 0, {}])
     }
-  this.mutex.peekLast(opts, function (e, key, seq) {
+
+  this.mutex.peekLast(opts, function (e, key) {
     if (!self.databases[name]) {
       if (e) {
         self.databases[name] = new Database(self, name, 0)
       } else {
+        var key = bytewise.decode(key)
+          , seq = key[2]
+          ;
+        if (typeof seq !== 'number') throw new Error("Invalid sequence: "+seq)
         self.databases[name] = new Database(self, name, seq)
       }
     }
@@ -50,6 +53,7 @@ Database.prototype.put = function (key, value, cb) {
   var self = this
   this.seq += 1
   var seq = this.seq
+  if (typeof seq !== 'number') throw new Error('Invalid sequence.')
   this.mutex.put(bytewise.encode([this.name, 0, seq, false]), key, noop)
   this.mutex.put(bytewise.encode([this.name, 1, key, seq, false]), value, function (e) {
     if (e) return cb(e)
@@ -57,6 +61,44 @@ Database.prototype.put = function (key, value, cb) {
     self.emit('entry', {seq:seq, id:key, data:value})
   })
 }
+Database.prototype.compact = function (cb) {
+  var self = this
+  var rangeOpts =
+    { start: bytewise.encode([this.name, 1, {}])
+    , end: bytewise.encode([this.name, 1, null])
+    , reverse: true
+    }
+
+  var sequences = self.mutex.lev.createReadStream(rangeOpts)
+    , id = null
+    , seqs = []
+    , deletes = []
+    ;
+  sequences.on('data', function (row) {
+    var key = bytewise.decode(row.key)
+      , _id = key[2]
+      , seq = key[3]
+      , deleted = key[4]
+      ;
+
+    if (id !== _id) {
+      id = _id
+    } else {
+      deletes.push([seq, deleted])
+    }
+  })
+  sequences.on('end', function () {
+    deletes.forEach(function (entry) {
+      var seq = entry[0]
+        , deleted = entry[1]
+        ;
+      self.mutex.del(bytewise.encode([self.name, 0, seq, deleted]), noop)
+    })
+    if (deletes.length === 0) return cb(null)
+    else self.mutex.afterWrite(cb)
+  })
+}
+
 Database.prototype.del = function (key, value, cb) {
   this.seq += 1
   var seq = this.seq
@@ -79,17 +121,21 @@ Database.prototype.get = function (key, cb) {
 }
 Database.prototype.getSequences = function (opts, cb) {
   opts.since = opts.since || 0
-  var ee = new events.EventEmitter()
-    , pending = []
+  opts.limit = opts.limit || -1
+  var pending = []
     , self = this
     , onEntry = pending.push.bind(pending)
     , rangeOpts =
       { start: bytewise.encode([this.name, 0, opts.since || 0])
       , end: bytewise.encode([this.name, 0, {}])
+      , limit: opts.limit
       }
+    , ee = new events.EventEmitter()
     ;
+
   this.on('entry', onEntry)
   var sequences = this.mutex.lev.createReadStream(rangeOpts)
+
   sequences.on('data', function (change) {
     change.key = decode(change.key)
     var entry =
@@ -118,11 +164,47 @@ Database.prototype.getSequences = function (opts, cb) {
         if (opts.since < entry.seq) ee.emit('entry')
       })
       self.removeListener('entry', onEntry)
-      // TODO: continuous once it is defined.
-      ee.emit('end')
+
+      if (opts.continuous) {
+        // TODO: continuous once it is defined.
+      } else {
+        ee.emit('end')
+      }
     })
   })
   return ee
+}
+Database.prototype.pull = function (url, opts, cb) {
+  var self = this
+  if (!cb && typeof opts === 'function') {
+    cb = opts
+    opts = {}
+  }
+  if (typeof opts.continuous === 'undefined') opts.continuous = false
+  if (typeof opts.since === 'undefined') opts.since = null
+  if (typeof opts.save === 'undefined') opts.save = true
+
+  function _run () {
+    var s = sleep.client(url, opts)
+    s.on('entry', function (entry) {
+      self.put(entry.id, entry.data, function (e) {
+        if (e) return cb(e) // probably need something smarter here
+      })
+    })
+    s.on('end', function () {
+      cb(null)
+    })
+  }
+
+  if (opts.save && opts.since === null) {
+    self.mutex.get(encode([self.name, 2, url]), function (e, since) {
+      if (e) since = 0
+      opts.since = since
+      _run()
+    })
+  } else {
+    _run()
+  }
 }
 
 module.exports = function (filename) {return new Store(filename)}
