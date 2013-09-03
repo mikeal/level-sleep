@@ -61,6 +61,14 @@ Database.prototype.put = function (key, value, cb) {
     self.emit('entry', {seq:seq, id:key, data:value})
   })
 }
+Database.prototype.add = function (key, value, cb) {
+  var self = this
+  self.get(key, function (e) {
+    if (e) return self.put(key, value, cb)
+    cb(null)
+  })
+}
+
 Database.prototype.compact = function (cb) {
   var self = this
   var rangeOpts =
@@ -95,6 +103,78 @@ Database.prototype.compact = function (cb) {
     else self.mutex.afterWrite(cb)
   })
 }
+Database.prototype.each = function (fn) {
+  var self = this
+  var rangeOpts =
+    { start: bytewise.encode([this.name, 1, null])
+    , end: bytewise.encode([this.name, 1, {}])
+    }
+
+  var sequences = self.mutex.lev.createReadStream(rangeOpts)
+    , id = null
+    , first = null
+    ;
+  sequences.on('data', function (row) {
+    var key = bytewise.decode(row.key)
+      , _id = key[2]
+      , seq = key[3]
+      , deleted = key[4]
+      , entry = {}
+    entry.seq = seq
+    entry.deleted = deleted
+    entry.id = _id
+    entry.data = row.value
+
+    if (first === null) {
+      first = [_id, entry.data, entry]
+    }
+    if (id !== _id) {
+      id = _id
+      fn(first[0], first[1], first[2])
+      first = null
+    }
+  })
+  sequences.on('end', function () {
+    if (first) fn(first[0], first[1], first[2])
+  })
+  return sequences
+}
+Database.prototype.keys = function (fn) {
+  var self = this
+  var rangeOpts =
+    { start: bytewise.encode([this.name, 1, null])
+    , end: bytewise.encode([this.name, 1, {}])
+    , values: false
+    }
+
+  var sequences = self.mutex.lev.createReadStream(rangeOpts)
+    , id = null
+    , first = null
+    ;
+  sequences.on('data', function (row) {
+    var key = bytewise.decode(row)
+      , _id = key[2]
+      , seq = key[3]
+      , deleted = key[4]
+      , entry = {}
+    entry.seq = seq
+    entry.deleted = deleted
+    entry.id = _id
+
+    if (first === null) {
+      first = [_id, entry]
+    }
+    if (id !== _id) {
+      id = _id
+      fn(first[0], first[1])
+      first = null
+    }
+  })
+  sequences.on('end', function () {
+    if (first) fn(first[0], first[1])
+  })
+  return sequences
+}
 
 Database.prototype.del = function (key, value, cb) {
   this.seq += 1
@@ -116,6 +196,38 @@ Database.prototype.get = function (key, cb) {
     cb(null, value)
   })
 }
+Database.prototype.nextSequence = function (opts, cb) {
+  opts.since = opts.since || -1
+  var pending = []
+    , self = this
+    , onEntry = pending.push.bind(pending)
+    , rangeOpts =
+      { start: bytewise.encode([this.name, 0, (opts.since || -1) + 1])
+      , end: bytewise.encode([this.name, 0, {}])
+      }
+    , ee = new events.EventEmitter()
+    ;
+
+  self.mutex.peekFirst(rangeOpts, function (e, rawkey, value) {
+    if (e) return cb(2)
+    var key = decode(rawkey)
+    var entry =
+      { seq: key[2]
+      , deleted: key[3]
+      , id: value
+      }
+    if (entry.deleted) {
+      cb(null, entry)
+    } else {
+      self.mutex.get(encode([self.name, 1, entry.id, entry.seq, entry.deleted]), function (e, value) {
+        if (e) return cb(e)
+        entry.data = value
+        cb(null, entry)
+      })
+    }
+  })
+}
+
 Database.prototype.getSequences = function (opts, cb) {
   opts.since = opts.since || 0
   opts.limit = opts.limit || -1
