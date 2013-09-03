@@ -1,7 +1,7 @@
 {
   "name": "level-sleep",
   "version": "0.3.1",
-  "description": "Database for storing, cloneing and replicating SLEEP compatible data stores.",
+  "description": "Database for storing, cloning and replicating SLEEP compatible data stores.",
   "main": "index.js",
   "directories": {
     "test": "tests"
