@@ -7,16 +7,16 @@
     "test": "tests"
   },
   "dependencies": {
-    "bytewise": "~0.5.0",
-    "level-mutex": "~0.6.0",
-    "levelup": "~0.10.0",
-    "leveldown": "~0.6.2",
-    "sleep-ref": "~0.2.0"
+    "bytewise": "~1.1.0",
+    "level-mutex": "~0.7.0",
+    "levelup": "~1.3.8",
+    "leveldown": "~1.7.2",
+    "sleep-ref": "~1.1.0"
   },
   "devDependencies": {
     "okdone": "~0.3.0",
     "cleanup": "~0.3.0",
-    "rimraf": "~2.2.0"
+    "rimraf": "~2.6.1"
   },
   "scripts": {
     "test": "node tests/run.js"
